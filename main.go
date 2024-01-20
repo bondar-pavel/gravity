@@ -29,10 +29,10 @@ func (o *Object) UpdatePosition() {
 }
 
 func (o *Object) BounceOnCollision() {
-	if o.x < 0 || o.x > screenWidth {
+	if o.x-float64(o.size) < 0 || o.x+float64(o.size) > screenWidth {
 		o.velocityX = -o.velocityX
 	}
-	if o.y < 0 || o.y > screenHeight {
+	if o.y-float64(o.size) < 0 || o.y+float64(o.size) > screenHeight {
 		o.velocityY = -o.velocityY
 	}
 }

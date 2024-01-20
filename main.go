@@ -10,7 +10,7 @@ import (
 const screenWidth = 320
 const screenHeight = 240
 
-const gravity = 0.01
+const gravity = 0.0001
 const friction = 0.01
 
 type Object struct {
@@ -74,11 +74,51 @@ func (m *Map) ObjectsToPixels() {
 		o.UpdatePosition()
 		o.BounceOnCollision()
 
-		for i := safeSub(o.x, o.size, screenWidth); i < safeAdd(o.x, o.size, screenWidth); i++ {
+		/*
+			// shade half covered pixels
+			xShade := o.x - float64(int(o.x))
+			yShade := o.y - float64(int(o.y))
+
+			xStart := safeSub(o.x, o.size, screenWidth)
+			yStart := safeSub(o.y, o.size, screenHeight)
+
+			xFinish := safeAdd(o.x, o.size, screenWidth)
+			yFinish := safeAdd(o.y, o.size, screenHeight)
+
+			for i := safeSub(o.x+1, o.size, screenWidth); i < safeAdd(o.x, o.size, screenWidth); i++ {
+				if m.pix[yStart*screenWidth+i] < 250 {
+					m.pix[yStart*screenWidth+i] = 255 - byte(255*yShade)
+				}
+				if m.pix[yFinish*screenWidth+i] < 250 {
+					m.pix[yFinish*screenWidth+i] = byte(255 * yShade)
+				}
+			}
+
 			for j := safeSub(o.y, o.size, screenHeight); j < safeAdd(o.y, o.size, screenHeight); j++ {
-				m.pix[j*screenWidth+i] = 250
+				if m.pix[j*screenWidth+xStart] < 250 {
+					v := 255 - byte(255*xShade)
+					if m.pix[j*screenWidth+xStart] > 0 {
+						v = m.pix[j*screenWidth+xStart]/2 + v/2
+					}
+					m.pix[j*screenWidth+xStart] = v
+				}
+				if m.pix[j*screenWidth+xFinish] < 250 {
+					v := byte(255 * xShade)
+					if m.pix[j*screenWidth+xFinish] > 0 {
+						v = m.pix[j*screenWidth+xFinish]/2 + v/2
+					}
+					m.pix[j*screenWidth+xFinish] = v
+				}
+			}
+		*/
+
+		// fill the rest
+		for i := safeSub(o.x+1, o.size, screenWidth); i < safeAdd(o.x, o.size, screenWidth); i++ {
+			for j := safeSub(o.y+1, o.size, screenHeight); j < safeAdd(o.y, o.size, screenHeight); j++ {
+				m.pix[j*screenWidth+i] = 255
 			}
 		}
+
 	}
 }
 
@@ -115,8 +155,8 @@ func safeSub(a float64, b, limit int) int {
 
 func safeAdd(a float64, b, limit int) int {
 	m := int(a)
-	if m+b > limit {
-		return limit
+	if m+b >= limit {
+		return limit - 1
 	}
 	return m + b
 }
@@ -148,17 +188,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 // Layout takes the outside size (e.g., the window size) and returns the (logical) screen size.
 // If you don't have to adjust the screen size with the outside size, just return a fixed size.
-func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return 320, 240
+func (g *Game) Layout(outsideWidth, outsideHeight int) (sWidth, sHeight int) {
+	return screenWidth, screenHeight
 }
 
 func main() {
 	m := newMap()
 
-	m.SetObject(50, 50, 20, 250)
-	m.SetObject(140, 100, 10, 250)
+	m.SetObject(50, 50, 20, 255)
+	m.SetObject(140, 100, 10, 255)
 
-	m.SetObject(220, 110, 8, 250)
+	m.SetObject(220, 110, 8, 255)
 
 	game := &Game{Map: m}
 	// Specify the window size as you like. Here, a doubled size is specified.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -10,7 +11,7 @@ const screenWidth = 320
 const screenHeight = 240
 
 const gravity = 0.01
-const friction = 0.05
+const friction = 0.01
 
 type Object struct {
 	x, y                 float64
@@ -20,7 +21,12 @@ type Object struct {
 
 func (o *Object) UpdateVelocity() {
 	o.velocityY += gravity
-	o.velocityX -= friction * o.velocityX
+
+	slowDown := friction * o.velocityY
+	if slowDown < 0 {
+		slowDown = -slowDown
+	}
+	o.velocityY -= slowDown
 }
 
 func (o *Object) UpdatePosition() {
@@ -55,7 +61,7 @@ func (m *Map) SetObject(x, y int, size int, value byte) {
 		x:         float64(x),
 		y:         float64(y),
 		size:      size,
-		velocityX: 0,
+		velocityX: rand.Float64()*1 - 0.5,
 		velocityY: 0.5,
 	})
 }
@@ -151,6 +157,8 @@ func main() {
 
 	m.SetObject(50, 50, 20, 250)
 	m.SetObject(140, 100, 10, 250)
+
+	m.SetObject(220, 110, 8, 250)
 
 	game := &Game{Map: m}
 	// Specify the window size as you like. Here, a doubled size is specified.

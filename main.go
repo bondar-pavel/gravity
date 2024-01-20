@@ -66,6 +66,21 @@ func (m *Map) SetObject(x, y int, size int, value byte) {
 	})
 }
 
+func (m *Map) FindObject(x, y int, size int) *Object {
+	minX := float64(safeSub(float64(x), size, screenWidth))
+	maxX := float64(safeAdd(float64(x), size, screenWidth))
+	minY := float64(safeSub(float64(y), size, screenHeight))
+	maxY := float64(safeAdd(float64(y), size, screenHeight))
+
+	for _, o := range m.objects {
+		if o.x < minX || o.x > maxX || o.y < minY || o.y > maxY {
+			continue
+		}
+		return o
+	}
+	return nil
+}
+
 func (m *Map) ObjectsToPixels() {
 	m.pix = make([]byte, screenWidth*screenHeight)
 
@@ -126,6 +141,18 @@ func (m *Map) Update() {
 	m.time++
 	if m.time >= screenHeight {
 		m.time = 0
+	}
+
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		x, y := ebiten.CursorPosition()
+
+		obj := m.FindObject(x, y, 10)
+		if obj != nil {
+			obj.x = float64(x)
+			obj.y = float64(y)
+		} else {
+			m.SetObject(x, y, 10, 255)
+		}
 	}
 
 	m.ObjectsToPixels()

@@ -10,7 +10,8 @@ const screenWidth = 320
 const screenHeight = 240
 
 type Map struct {
-	pix []byte
+	pix  []byte
+	time int
 }
 
 func newMap() *Map {
@@ -22,17 +23,27 @@ func newMap() *Map {
 func (m *Map) SetObject(x, y int, size int, value byte) {
 	for i := safeSub(x, size); i < safeAdd(x, size, screenWidth); i++ {
 		for j := safeSub(y, size); j < safeAdd(y, size, screenHeight); j++ {
-			m.pix[j*screenHeight+i] = value
+			m.pix[j*screenWidth+i] = value
 		}
 	}
 }
 
+func (m *Map) Update() {
+	m.time++
+	if m.time >= screenHeight {
+		m.time = 0
+
+	}
+
+	m.SetObject(m.time, m.time, 20, 250)
+}
+
 func (m *Map) Draw(pixels []byte) {
 	for i, v := range m.pix {
-		pixels[4*i] = v
-		pixels[4*i+1] = v
-		pixels[4*i+2] = v
-		pixels[4*i+3] = v
+		pixels[4*i] = v   // R
+		pixels[4*i+1] = v // G
+		pixels[4*i+2] = v // B
+		pixels[4*i+3] = v // ?
 	}
 
 }
@@ -69,6 +80,8 @@ func (g *Game) Update() error {
 	*/
 
 	//screen.WritePixels(g.pixels)
+	g.Map.Update()
+
 	return nil
 }
 
@@ -79,7 +92,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.pixels = make([]byte, screenWidth*screenHeight*4)
 	}
 
-	g.Map.SetObject(100, 0, 5, 250)
 	g.Map.Draw(g.pixels)
 
 	screen.WritePixels(g.pixels)

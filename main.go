@@ -15,9 +15,22 @@ type Object struct {
 	velocityX, velocityY float64
 }
 
+func (o *Object) UpdateVelocity() {
+	o.velocityY += 0.01
+}
+
 func (o *Object) UpdatePosition() {
 	o.x += o.velocityX
 	o.y += o.velocityY
+}
+
+func (o *Object) BounceOnCollision() {
+	if o.x < 0 || o.x > screenWidth {
+		o.velocityX = -o.velocityX
+	}
+	if o.y < 0 || o.y > screenHeight {
+		o.velocityY = -o.velocityY
+	}
 }
 
 type Map struct {
@@ -47,7 +60,9 @@ func (m *Map) ObjectsToPixels() {
 	m.pix = make([]byte, screenWidth*screenHeight)
 
 	for _, o := range m.objects {
+		o.UpdateVelocity()
 		o.UpdatePosition()
+		o.BounceOnCollision()
 
 		for i := safeSub(o.x, o.size, screenWidth); i < safeAdd(o.x, o.size, screenWidth); i++ {
 			for j := safeSub(o.y, o.size, screenHeight); j < safeAdd(o.y, o.size, screenHeight); j++ {

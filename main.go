@@ -21,8 +21,8 @@ func newMap() *Map {
 }
 
 func (m *Map) SetObject(x, y int, size int, value byte) {
-	for i := safeSub(x, size); i < safeAdd(x, size, screenWidth); i++ {
-		for j := safeSub(y, size); j < safeAdd(y, size, screenHeight); j++ {
+	for i := safeSub(x, size, screenWidth); i < safeAdd(x, size, screenWidth); i++ {
+		for j := safeSub(y, size, screenHeight); j < safeAdd(y, size, screenHeight); j++ {
 			m.pix[j*screenWidth+i] = value
 		}
 	}
@@ -48,11 +48,15 @@ func (m *Map) Draw(pixels []byte) {
 
 }
 
-func safeSub(a, b int) int {
+func safeSub(a, b, limit int) int {
 	if a < b {
 		return 0
 	}
-	return a - b
+	result := a - b
+	if result > limit {
+		return limit
+	}
+	return result
 }
 
 func safeAdd(a, b, limit int) int {

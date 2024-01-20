@@ -9,21 +9,50 @@ import (
 const screenWidth = 320
 const screenHeight = 240
 
+type Object struct {
+	x, y                 float64
+	size                 int
+	velocityX, velocityY float64
+}
+
+func (o *Object) UpdatePosition() {
+	o.x += o.velocityX
+	o.y += o.velocityY
+}
+
 type Map struct {
-	pix  []byte
-	time int
+	objects []*Object
+	pix     []byte
+	time    int
 }
 
 func newMap() *Map {
 	return &Map{
-		pix: make([]byte, screenWidth*screenHeight),
+		pix:     make([]byte, screenWidth*screenHeight),
+		objects: make([]*Object, 0),
 	}
 }
 
 func (m *Map) SetObject(x, y int, size int, value byte) {
-	for i := safeSub(x, size, screenWidth); i < safeAdd(x, size, screenWidth); i++ {
-		for j := safeSub(y, size, screenHeight); j < safeAdd(y, size, screenHeight); j++ {
-			m.pix[j*screenWidth+i] = value
+	m.objects = append(m.objects, &Object{
+		x:         float64(x),
+		y:         float64(y),
+		size:      size,
+		velocityX: 0,
+		velocityY: 0.5,
+	})
+}
+
+func (m *Map) ObjectsToPixels() {
+	m.pix = make([]byte, screenWidth*screenHeight)
+
+	for _, o := range m.objects {
+		o.UpdatePosition()
+
+		for i := safeSub(o.x, o.size, screenWidth); i < safeAdd(o.x, o.size, screenWidth); i++ {
+			for j := safeSub(o.y, o.size, screenHeight); j < safeAdd(o.y, o.size, screenHeight); j++ {
+				m.pix[j*screenWidth+i] = 250
+			}
 		}
 	}
 }
@@ -32,10 +61,9 @@ func (m *Map) Update() {
 	m.time++
 	if m.time >= screenHeight {
 		m.time = 0
-
 	}
 
-	m.SetObject(m.time, m.time, 20, 250)
+	m.ObjectsToPixels()
 }
 
 func (m *Map) Draw(pixels []byte) {
@@ -48,22 +76,24 @@ func (m *Map) Draw(pixels []byte) {
 
 }
 
-func safeSub(a, b, limit int) int {
-	if a < b {
+func safeSub(a float64, b, limit int) int {
+	m := int(a)
+	if m < b {
 		return 0
 	}
-	result := a - b
+	result := m - b
 	if result > limit {
 		return limit
 	}
 	return result
 }
 
-func safeAdd(a, b, limit int) int {
-	if a+b > limit {
+func safeAdd(a float64, b, limit int) int {
+	m := int(a)
+	if m+b > limit {
 		return limit
 	}
-	return a + b
+	return m + b
 }
 
 // Game implements ebiten.Game interface.
@@ -75,17 +105,7 @@ type Game struct {
 // Update proceeds the game state.
 // Update is called every tick (1/60 [s] by default).
 func (g *Game) Update() error {
-	/*
-		for i, v := range g.Map.pixels {
-			if v < 250 {
-				g.Map.pixels[i] = v + 1
-			}
-		}
-	*/
-
-	//screen.WritePixels(g.pixels)
 	g.Map.Update()
-
 	return nil
 }
 
@@ -108,7 +128,12 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func main() {
-	game := &Game{Map: newMap()}
+	m := newMap()
+
+	m.SetObject(50, 50, 20, 250)
+	m.SetObject(140, 100, 10, 250)
+
+	game := &Game{Map: m}
 	// Specify the window size as you like. Here, a doubled size is specified.
 	ebiten.SetWindowSize(640, 480)
 	ebiten.SetWindowTitle("Gravity game")

@@ -9,6 +9,9 @@ import (
 const screenWidth = 320
 const screenHeight = 240
 
+const gravity = 0.01
+const friction = 0.05
+
 type Object struct {
 	x, y                 float64
 	size                 int
@@ -16,7 +19,8 @@ type Object struct {
 }
 
 func (o *Object) UpdateVelocity() {
-	o.velocityY += 0.01
+	o.velocityY += gravity
+	o.velocityX -= friction * o.velocityX
 }
 
 func (o *Object) UpdatePosition() {

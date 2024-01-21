@@ -19,7 +19,33 @@ type Object struct {
 	velocityX, velocityY float64
 }
 
-func (o *Object) UpdateVelocity() {
+// CalculateGraviationalForce calculates resulting force of gravity for passed in objects
+func (o *Object) CalculateGraviationalForce(objects []*Object) (float64, float64) {
+	var forceX, forceY float64
+
+	for _, obj := range objects {
+		if obj == o {
+			continue
+		}
+		dx := obj.x - o.x
+		dy := obj.y - o.y
+		distance := dx*dx + dy*dy
+
+		sizeAdjustment := float64(obj.size) / float64(o.size)
+
+		forceX += sizeAdjustment * dx / distance
+		forceY += sizeAdjustment * dy / distance
+	}
+
+	return forceX, forceY
+}
+
+func (o *Object) UpdateVelocity(forceX, forceY float64) {
+	o.velocityX += forceX
+	o.velocityY += forceY
+}
+
+func (o *Object) UpdateVelocityGravitational() {
 	o.velocityY += gravity
 
 	slowDown := friction * o.velocityY
@@ -85,7 +111,7 @@ func (m *Map) ObjectsToPixels() {
 	m.pix = make([]byte, screenWidth*screenHeight)
 
 	for _, o := range m.objects {
-		o.UpdateVelocity()
+		o.UpdateVelocity(o.CalculateGraviationalForce(m.objects))
 		o.UpdatePosition()
 		o.BounceOnCollision()
 
@@ -146,7 +172,7 @@ func (m *Map) Update() {
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 		x, y := ebiten.CursorPosition()
 
-		obj := m.FindObject(x, y, 10)
+		obj := m.FindObject(x, y, 20)
 		if obj != nil {
 			obj.x = float64(x)
 			obj.y = float64(y)

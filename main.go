@@ -2,17 +2,16 @@ package main
 
 import (
 	"log"
-	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-const screenWidth = 640
-const screenHeight = 480
+const screenWidth = 800
+const screenHeight = 600
 
 const gravity = 0.0001
 const friction = 0.01
-const bounceEfficiency = 0.8
+const bounceEfficiency = 0.5
 
 type Object struct {
 	x, y                 float64
@@ -88,8 +87,8 @@ func (m *Map) SetObject(x, y int, size int, value byte) {
 		x:         float64(x),
 		y:         float64(y),
 		size:      size,
-		velocityX: rand.Float64()*1 - 0.5,
-		velocityY: 0.5,
+		velocityX: 0, // rand.Float64()*1 - 0.5,
+		velocityY: 0,
 	})
 }
 
@@ -255,14 +254,14 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (sWidth, sHeight int) {
 func main() {
 	m := newMap()
 
-	m.SetObject(50, 50, 20, 255)
-	m.SetObject(140, 100, 10, 255)
+	m.SetObject(200, 250, 50, 255)
+	m.SetObject(140, 100, 8, 255)
 
 	m.SetObject(220, 110, 8, 255)
 
 	game := &Game{Map: m}
 	// Specify the window size as you like. Here, a doubled size is specified.
-	ebiten.SetWindowSize(640, 480)
+	ebiten.SetWindowSize(800, 600)
 	ebiten.SetWindowTitle("Gravity game")
 	// Call ebiten.RunGame to start your game loop.
 	if err := ebiten.RunGame(game); err != nil {

@@ -7,11 +7,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-const screenWidth = 320
-const screenHeight = 240
+const screenWidth = 640
+const screenHeight = 480
 
 const gravity = 0.0001
 const friction = 0.01
+const bounceEfficiency = 0.8
 
 type Object struct {
 	x, y                 float64
@@ -31,7 +32,7 @@ func (o *Object) CalculateGraviationalForce(objects []*Object) (float64, float64
 		dy := obj.y - o.y
 		distance := dx*dx + dy*dy
 
-		sizeAdjustment := float64(obj.size) / float64(o.size)
+		sizeAdjustment := float64(obj.size*obj.size) / float64(o.size*o.size)
 
 		forceX += sizeAdjustment * dx / distance
 		forceY += sizeAdjustment * dy / distance
@@ -62,10 +63,10 @@ func (o *Object) UpdatePosition() {
 
 func (o *Object) BounceOnCollision() {
 	if o.x-float64(o.size) < 0 || o.x+float64(o.size) > screenWidth {
-		o.velocityX = -o.velocityX
+		o.velocityX = -o.velocityX * bounceEfficiency
 	}
 	if o.y-float64(o.size) < 0 || o.y+float64(o.size) > screenHeight {
-		o.velocityY = -o.velocityY
+		o.velocityY = -o.velocityY * bounceEfficiency
 	}
 }
 

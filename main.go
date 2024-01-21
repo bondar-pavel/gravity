@@ -115,51 +115,57 @@ func (m *Map) ObjectsToPixels() {
 		o.UpdatePosition()
 		o.BounceOnCollision()
 
-		/*
-			// shade half covered pixels
-			xShade := o.x - float64(int(o.x))
-			yShade := o.y - float64(int(o.y))
+		//m.ShadeHalfCoveredPixels(o, m.pix)
 
-			xStart := safeSub(o.x, o.size, screenWidth)
-			yStart := safeSub(o.y, o.size, screenHeight)
-
-			xFinish := safeAdd(o.x, o.size, screenWidth)
-			yFinish := safeAdd(o.y, o.size, screenHeight)
-
-			for i := safeSub(o.x+1, o.size, screenWidth); i < safeAdd(o.x, o.size, screenWidth); i++ {
-				if m.pix[yStart*screenWidth+i] < 250 {
-					m.pix[yStart*screenWidth+i] = 255 - byte(255*yShade)
+		// draw filled in circle
+		for i := safeSub(o.x+1, o.size, screenWidth); i < safeAdd(o.x+1, o.size, screenWidth); i++ {
+			for j := safeSub(o.y+1, o.size, screenHeight); j < safeAdd(o.y+1, o.size, screenHeight); j++ {
+				dx := float64(i) - o.x
+				dy := float64(j) - o.y
+				if dx*dx+dy*dy < float64(o.size*o.size) {
+					m.pix[j*screenWidth+i] = 255
 				}
-				if m.pix[yFinish*screenWidth+i] < 250 {
-					m.pix[yFinish*screenWidth+i] = byte(255 * yShade)
-				}
-			}
-
-			for j := safeSub(o.y, o.size, screenHeight); j < safeAdd(o.y, o.size, screenHeight); j++ {
-				if m.pix[j*screenWidth+xStart] < 250 {
-					v := 255 - byte(255*xShade)
-					if m.pix[j*screenWidth+xStart] > 0 {
-						v = m.pix[j*screenWidth+xStart]/2 + v/2
-					}
-					m.pix[j*screenWidth+xStart] = v
-				}
-				if m.pix[j*screenWidth+xFinish] < 250 {
-					v := byte(255 * xShade)
-					if m.pix[j*screenWidth+xFinish] > 0 {
-						v = m.pix[j*screenWidth+xFinish]/2 + v/2
-					}
-					m.pix[j*screenWidth+xFinish] = v
-				}
-			}
-		*/
-
-		// fill the rest
-		for i := safeSub(o.x+1, o.size, screenWidth); i < safeAdd(o.x, o.size, screenWidth); i++ {
-			for j := safeSub(o.y+1, o.size, screenHeight); j < safeAdd(o.y, o.size, screenHeight); j++ {
-				m.pix[j*screenWidth+i] = 255
 			}
 		}
 
+	}
+}
+
+// ShadeHalfCoveredPixels shades half covered pixels
+func (m *Map) ShadeHalfCoveredPixels(o *Object, pix []byte) {
+	xShade := o.x - float64(int(o.x))
+	yShade := o.y - float64(int(o.y))
+
+	xStart := safeSub(o.x, o.size, screenWidth)
+	yStart := safeSub(o.y, o.size, screenHeight)
+
+	xFinish := safeAdd(o.x, o.size, screenWidth)
+	yFinish := safeAdd(o.y, o.size, screenHeight)
+
+	for i := safeSub(o.x+1, o.size, screenWidth); i < safeAdd(o.x, o.size, screenWidth); i++ {
+		if m.pix[yStart*screenWidth+i] < 250 {
+			m.pix[yStart*screenWidth+i] = 255 - byte(255*yShade)
+		}
+		if m.pix[yFinish*screenWidth+i] < 250 {
+			m.pix[yFinish*screenWidth+i] = byte(255 * yShade)
+		}
+	}
+
+	for j := safeSub(o.y, o.size, screenHeight); j < safeAdd(o.y, o.size, screenHeight); j++ {
+		if m.pix[j*screenWidth+xStart] < 250 {
+			v := 255 - byte(255*xShade)
+			if m.pix[j*screenWidth+xStart] > 0 {
+				v = m.pix[j*screenWidth+xStart]/2 + v/2
+			}
+			m.pix[j*screenWidth+xStart] = v
+		}
+		if m.pix[j*screenWidth+xFinish] < 250 {
+			v := byte(255 * xShade)
+			if m.pix[j*screenWidth+xFinish] > 0 {
+				v = m.pix[j*screenWidth+xFinish]/2 + v/2
+			}
+			m.pix[j*screenWidth+xFinish] = v
+		}
 	}
 }
 

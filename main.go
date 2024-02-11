@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -11,12 +12,14 @@ const screenHeight = 600
 
 const gravity = 0.0001
 const friction = 0.01
-const bounceEfficiency = 0.5
+const screenBounceEfficiency = 0.5
 
 type Object struct {
 	x, y                 float64
-	size                 int
+	radius               int
+	mass                 float64
 	velocityX, velocityY float64
+	bouncedFrames        int
 }
 
 // CalculateGraviationalForce calculates resulting force of gravity for passed in objects
@@ -31,7 +34,7 @@ func (o *Object) CalculateGraviationalForce(objects []*Object) (float64, float64
 		dy := obj.y - o.y
 		distance := dx*dx + dy*dy
 
-		sizeAdjustment := float64(obj.size*obj.size) / float64(o.size*o.size)
+		sizeAdjustment := float64(obj.radius*obj.radius) / float64(o.radius*o.radius)
 
 		forceX += sizeAdjustment * dx / distance
 		forceY += sizeAdjustment * dy / distance
@@ -61,11 +64,54 @@ func (o *Object) UpdatePosition() {
 }
 
 func (o *Object) BounceOnScreenCollision() {
-	if o.x-float64(o.size) < 0 || o.x+float64(o.size) > screenWidth {
-		o.velocityX = -o.velocityX * bounceEfficiency
+	if o.x-float64(o.radius) < 0 || o.x+float64(o.radius) > screenWidth {
+		o.velocityX = -o.velocityX * screenBounceEfficiency
 	}
-	if o.y-float64(o.size) < 0 || o.y+float64(o.size) > screenHeight {
-		o.velocityY = -o.velocityY * bounceEfficiency
+	if o.y-float64(o.radius) < 0 || o.y+float64(o.radius) > screenHeight {
+		o.velocityY = -o.velocityY * screenBounceEfficiency
+	}
+}
+
+func (o *Object) BounceOnObjectCollision(objects []*Object) {
+	// skip processing if object is in bounced state
+	if o.bouncedFrames > 0 {
+		o.bouncedFrames--
+		return
+	}
+
+	for _, obj := range objects {
+		if obj == o {
+			continue
+		}
+		if obj.bouncedFrames > 0 {
+			continue
+		}
+
+		dx := obj.x - o.x
+		dy := obj.y - o.y
+
+		distanceSquared := dx*dx + dy*dy
+		distance := math.Sqrt(distanceSquared)
+
+		if distance < float64(o.radius+obj.radius) {
+			normalX := dx / distance
+			normalY := dy / distance
+
+			myProjection := o.velocityX*normalX + o.velocityY*normalY
+			objProjection := obj.velocityX*normalX + obj.velocityY*normalY
+
+			impulse := 2 * (myProjection - objProjection) / (o.mass + obj.mass)
+
+			o.velocityX -= impulse * obj.mass * normalX
+			o.velocityY -= impulse * obj.mass * normalY
+
+			obj.velocityX += impulse * o.mass * normalX
+			obj.velocityY += impulse * o.mass * normalY
+
+			// set bounced frames to prevent multiple collision detection within one frame
+			o.bouncedFrames = 10
+			obj.bouncedFrames = 10
+		}
 	}
 }
 
@@ -81,26 +127,27 @@ func newMap() *Map {
 	return &Map{
 		pix:                     make([]byte, screenWidth*screenHeight),
 		objects:                 make([]*Object, 0),
-		bounceOnScreenCollision: false,
+		bounceOnScreenCollision: true,
 		shadeHalfCoveredPixels:  false,
 	}
 }
 
-func (m *Map) SetObject(x, y int, size int, value byte) {
+func (m *Map) SetObject(x, y int, radius int, value byte) {
 	m.objects = append(m.objects, &Object{
 		x:         float64(x),
 		y:         float64(y),
-		size:      size,
+		radius:    radius,
+		mass:      float64(radius * radius),
 		velocityX: 0, // rand.Float64()*1 - 0.5,
 		velocityY: 0,
 	})
 }
 
-func (m *Map) FindObject(x, y int, size int) *Object {
-	minX := float64(safeSub(float64(x), size, screenWidth))
-	maxX := float64(safeAdd(float64(x), size, screenWidth))
-	minY := float64(safeSub(float64(y), size, screenHeight))
-	maxY := float64(safeAdd(float64(y), size, screenHeight))
+func (m *Map) FindObject(x, y int, radius int) *Object {
+	minX := float64(safeSub(float64(x), radius, screenWidth))
+	maxX := float64(safeAdd(float64(x), radius, screenWidth))
+	minY := float64(safeSub(float64(y), radius, screenHeight))
+	maxY := float64(safeAdd(float64(y), radius, screenHeight))
 
 	for _, o := range m.objects {
 		if o.x < minX || o.x > maxX || o.y < minY || o.y > maxY {
@@ -115,6 +162,8 @@ func (m *Map) ObjectsToPixels() {
 	m.pix = make([]byte, screenWidth*screenHeight)
 
 	for _, o := range m.objects {
+		o.BounceOnObjectCollision(m.objects)
+
 		o.UpdateVelocity(o.CalculateGraviationalForce(m.objects))
 		o.UpdatePosition()
 
@@ -127,11 +176,11 @@ func (m *Map) ObjectsToPixels() {
 		}
 
 		// draw filled in circle
-		for i := safeSub(o.x+1, o.size, screenWidth); i < safeAdd(o.x+1, o.size, screenWidth); i++ {
-			for j := safeSub(o.y+1, o.size, screenHeight); j < safeAdd(o.y+1, o.size, screenHeight); j++ {
+		for i := safeSub(o.x+1, o.radius, screenWidth); i < safeAdd(o.x+1, o.radius, screenWidth); i++ {
+			for j := safeSub(o.y+1, o.radius, screenHeight); j < safeAdd(o.y+1, o.radius, screenHeight); j++ {
 				dx := float64(i) - o.x
 				dy := float64(j) - o.y
-				if dx*dx+dy*dy < float64(o.size*o.size) {
+				if dx*dx+dy*dy < float64(o.radius*o.radius) {
 					m.pix[j*screenWidth+i] = 255
 				}
 			}
@@ -145,13 +194,13 @@ func (m *Map) ShadeHalfCoveredPixels(o *Object, pix []byte) {
 	xShade := o.x - float64(int(o.x))
 	yShade := o.y - float64(int(o.y))
 
-	xStart := safeSub(o.x, o.size, screenWidth)
-	yStart := safeSub(o.y, o.size, screenHeight)
+	xStart := safeSub(o.x, o.radius, screenWidth)
+	yStart := safeSub(o.y, o.radius, screenHeight)
 
-	xFinish := safeAdd(o.x, o.size, screenWidth)
-	yFinish := safeAdd(o.y, o.size, screenHeight)
+	xFinish := safeAdd(o.x, o.radius, screenWidth)
+	yFinish := safeAdd(o.y, o.radius, screenHeight)
 
-	for i := safeSub(o.x+1, o.size, screenWidth); i < safeAdd(o.x, o.size, screenWidth); i++ {
+	for i := safeSub(o.x+1, o.radius, screenWidth); i < safeAdd(o.x, o.radius, screenWidth); i++ {
 		if m.pix[yStart*screenWidth+i] < 250 {
 			m.pix[yStart*screenWidth+i] = 255 - byte(255*yShade)
 		}
@@ -160,7 +209,7 @@ func (m *Map) ShadeHalfCoveredPixels(o *Object, pix []byte) {
 		}
 	}
 
-	for j := safeSub(o.y, o.size, screenHeight); j < safeAdd(o.y, o.size, screenHeight); j++ {
+	for j := safeSub(o.y, o.radius, screenHeight); j < safeAdd(o.y, o.radius, screenHeight); j++ {
 		if m.pix[j*screenWidth+xStart] < 250 {
 			v := 255 - byte(255*xShade)
 			if m.pix[j*screenWidth+xStart] > 0 {

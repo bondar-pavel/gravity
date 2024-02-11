@@ -60,7 +60,7 @@ func (o *Object) UpdatePosition() {
 	o.y += o.velocityY
 }
 
-func (o *Object) BounceOnCollision() {
+func (o *Object) BounceOnScreenCollision() {
 	if o.x-float64(o.size) < 0 || o.x+float64(o.size) > screenWidth {
 		o.velocityX = -o.velocityX * bounceEfficiency
 	}
@@ -70,15 +70,19 @@ func (o *Object) BounceOnCollision() {
 }
 
 type Map struct {
-	objects []*Object
-	pix     []byte
-	time    int
+	objects                 []*Object
+	pix                     []byte
+	time                    int
+	bounceOnScreenCollision bool
+	shadeHalfCoveredPixels  bool
 }
 
 func newMap() *Map {
 	return &Map{
-		pix:     make([]byte, screenWidth*screenHeight),
-		objects: make([]*Object, 0),
+		pix:                     make([]byte, screenWidth*screenHeight),
+		objects:                 make([]*Object, 0),
+		bounceOnScreenCollision: false,
+		shadeHalfCoveredPixels:  false,
 	}
 }
 
@@ -113,9 +117,14 @@ func (m *Map) ObjectsToPixels() {
 	for _, o := range m.objects {
 		o.UpdateVelocity(o.CalculateGraviationalForce(m.objects))
 		o.UpdatePosition()
-		o.BounceOnCollision()
 
-		//m.ShadeHalfCoveredPixels(o, m.pix)
+		if m.bounceOnScreenCollision {
+			o.BounceOnScreenCollision()
+		}
+
+		if m.shadeHalfCoveredPixels {
+			m.ShadeHalfCoveredPixels(o, m.pix)
+		}
 
 		// draw filled in circle
 		for i := safeSub(o.x+1, o.size, screenWidth); i < safeAdd(o.x+1, o.size, screenWidth); i++ {
@@ -254,7 +263,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (sWidth, sHeight int) {
 func main() {
 	m := newMap()
 
-	m.SetObject(200, 250, 50, 255)
+	m.SetObject(200, 250, 30, 255)
 	m.SetObject(140, 100, 8, 255)
 
 	m.SetObject(220, 110, 8, 255)

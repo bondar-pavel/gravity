@@ -7,11 +7,11 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-const screenWidth = 800
-const screenHeight = 600
+const screenWidth = 1600
+const screenHeight = 1200
 
 const gravity = 0.0001
-const graviationalConstant = 0.01
+const graviationalConstant = 0.005
 const friction = 0.01
 const screenBounceEfficiency = 0.5
 

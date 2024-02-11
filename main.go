@@ -11,6 +11,7 @@ const screenWidth = 800
 const screenHeight = 600
 
 const gravity = 0.0001
+const graviationalConstant = 0.01
 const friction = 0.01
 const screenBounceEfficiency = 0.5
 
@@ -34,10 +35,10 @@ func (o *Object) CalculateGraviationalForce(objects []*Object) (float64, float64
 		dy := obj.y - o.y
 		distance := dx*dx + dy*dy
 
-		sizeAdjustment := float64(obj.radius*obj.radius) / float64(o.radius*o.radius)
+		sizeAdjustment := obj.mass / o.mass
 
-		forceX += sizeAdjustment * dx / distance
-		forceY += sizeAdjustment * dy / distance
+		forceX += graviationalConstant * sizeAdjustment * dx / distance
+		forceY += graviationalConstant * sizeAdjustment * dy / distance
 	}
 
 	return forceX, forceY
@@ -109,8 +110,8 @@ func (o *Object) BounceOnObjectCollision(objects []*Object) {
 			obj.velocityY += impulse * o.mass * normalY
 
 			// set bounced frames to prevent multiple collision detection within one frame
-			o.bouncedFrames = 10
-			obj.bouncedFrames = 10
+			//o.bouncedFrames = 1
+			//obj.bouncedFrames = 1
 		}
 	}
 }
@@ -138,7 +139,7 @@ func (m *Map) SetObject(x, y int, radius int, value byte) {
 		y:         float64(y),
 		radius:    radius,
 		mass:      float64(radius * radius),
-		velocityX: 0, // rand.Float64()*1 - 0.5,
+		velocityX: 0, //rand.Float64()*1 - 0.5,
 		velocityY: 0,
 	})
 }
@@ -161,11 +162,11 @@ func (m *Map) FindObject(x, y int, radius int) *Object {
 func (m *Map) ObjectsToPixels() {
 	m.pix = make([]byte, screenWidth*screenHeight)
 
-	for _, o := range m.objects {
-		o.BounceOnObjectCollision(m.objects)
-
+	for i, o := range m.objects {
 		o.UpdateVelocity(o.CalculateGraviationalForce(m.objects))
 		o.UpdatePosition()
+
+		o.BounceOnObjectCollision(m.objects[i+1:])
 
 		if m.bounceOnScreenCollision {
 			o.BounceOnScreenCollision()

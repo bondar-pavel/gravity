@@ -65,10 +65,10 @@ func (o *Object) UpdatePosition() {
 }
 
 func (o *Object) BounceOnScreenCollision() {
-	if o.x-float64(o.radius) < 0 || o.x+float64(o.radius) > screenWidth {
+	if o.x-float64(o.radius) < 0 && o.velocityX < 0 || o.x+float64(o.radius) > screenWidth && o.velocityX > 0 {
 		o.velocityX = -o.velocityX * screenBounceEfficiency
 	}
-	if o.y-float64(o.radius) < 0 || o.y+float64(o.radius) > screenHeight {
+	if o.y-float64(o.radius) < 0 && o.velocityY < 0 || o.y+float64(o.radius) > screenHeight && o.velocityY > 0 {
 		o.velocityY = -o.velocityY * screenBounceEfficiency
 	}
 }
@@ -117,19 +117,21 @@ func (o *Object) BounceOnObjectCollision(objects []*Object) {
 }
 
 type Map struct {
-	objects                 []*Object
-	pix                     []byte
-	time                    int
-	bounceOnScreenCollision bool
-	shadeHalfCoveredPixels  bool
+	objects                   []*Object
+	pix                       []byte
+	time                      int
+	bounceOnScreenCollision   bool
+	bounceOnParticleCollision bool
+	shadeHalfCoveredPixels    bool
 }
 
 func newMap() *Map {
 	return &Map{
-		pix:                     make([]byte, screenWidth*screenHeight),
-		objects:                 make([]*Object, 0),
-		bounceOnScreenCollision: true,
-		shadeHalfCoveredPixels:  false,
+		pix:                       make([]byte, screenWidth*screenHeight),
+		objects:                   make([]*Object, 0),
+		bounceOnScreenCollision:   true,
+		bounceOnParticleCollision: true,
+		shadeHalfCoveredPixels:    false,
 	}
 }
 
@@ -166,7 +168,9 @@ func (m *Map) ObjectsToPixels() {
 		o.UpdateVelocity(o.CalculateGraviationalForce(m.objects))
 		o.UpdatePosition()
 
-		o.BounceOnObjectCollision(m.objects[i+1:])
+		if m.bounceOnParticleCollision {
+			o.BounceOnObjectCollision(m.objects[i+1:])
+		}
 
 		if m.bounceOnScreenCollision {
 			o.BounceOnScreenCollision()
@@ -237,7 +241,7 @@ func (m *Map) Update() {
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 		x, y := ebiten.CursorPosition()
 
-		obj := m.FindObject(x, y, 20)
+		obj := m.FindObject(x, y, 15)
 		if obj != nil {
 			obj.x = float64(x)
 			obj.y = float64(y)

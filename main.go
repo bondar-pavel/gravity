@@ -33,12 +33,12 @@ func (o *Object) CalculateGraviationalForce(objects []*Object) (float64, float64
 		}
 		dx := obj.x - o.x
 		dy := obj.y - o.y
-		distance := dx*dx + dy*dy
+		distanceSquared := dx*dx + dy*dy
 
 		sizeAdjustment := obj.mass / o.mass
 
-		forceX += graviationalConstant * sizeAdjustment * dx / distance
-		forceY += graviationalConstant * sizeAdjustment * dy / distance
+		forceX += graviationalConstant * sizeAdjustment * dx / distanceSquared
+		forceY += graviationalConstant * sizeAdjustment * dy / distanceSquared
 	}
 
 	return forceX, forceY

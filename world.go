@@ -4,6 +4,10 @@ type World struct {
 	objects                   []*Object
 	bounceOnScreenCollision   bool
 	bounceOnParticleCollision bool
+	mergeOnCollision          bool
+	frictionEnabled           bool
+	frictionCoeff             float64
+	restitution               float64
 }
 
 func newWorld() *World {
@@ -11,6 +15,8 @@ func newWorld() *World {
 		objects:                   make([]*Object, 0),
 		bounceOnScreenCollision:   true,
 		bounceOnParticleCollision: true,
+		frictionCoeff:             0.001,
+		restitution:               0.8,
 	}
 }
 
@@ -49,22 +55,72 @@ func (w *World) FindObject(wx, wy float64, radius int) *Object {
 	return nil
 }
 
+// StepPhysics runs one tick using Velocity Verlet integration.
 func (w *World) StepPhysics() {
+	// Phase 1: Update positions using current velocity and acceleration
+	for _, o := range w.objects {
+		if o.pinned {
+			continue
+		}
+		o.UpdatePositionVerlet()
+	}
+
+	// Phase 2: Calculate new accelerations from updated positions
+	type accel struct{ ax, ay float64 }
+	newAccels := make([]accel, len(w.objects))
 	for i, o := range w.objects {
 		if o.pinned {
 			continue
 		}
+		newAccels[i].ax, newAccels[i].ay = o.CalculateAcceleration(w.objects)
+	}
 
-		o.UpdateVelocity(o.CalculateGravitationalForce(w.objects))
-		o.UpdatePosition()
-
-		if w.bounceOnParticleCollision {
-			o.BounceOnObjectCollision(w.objects[i+1:])
+	// Phase 3: Update velocities using average of old and new acceleration
+	for i, o := range w.objects {
+		if o.pinned {
+			continue
 		}
+		o.UpdateVelocityVerlet(newAccels[i].ax, newAccels[i].ay)
 
-		if w.bounceOnScreenCollision {
+		if w.frictionEnabled {
+			o.velocityX *= (1 - w.frictionCoeff)
+			o.velocityY *= (1 - w.frictionCoeff)
+		}
+	}
+
+	// Collisions
+	if w.bounceOnParticleCollision || w.mergeOnCollision {
+		w.handleCollisions()
+	}
+
+	// Screen boundary
+	if w.bounceOnScreenCollision {
+		for _, o := range w.objects {
+			if o.pinned {
+				continue
+			}
 			o.BounceOnScreenCollision()
 		}
+	}
+}
+
+func (w *World) handleCollisions() {
+	var toRemove []*Object
+
+	for i := 0; i < len(w.objects); i++ {
+		o := w.objects[i]
+		for j := i + 1; j < len(w.objects); j++ {
+			obj := w.objects[j]
+			shouldMerge := o.CollideWith(obj, w.restitution, w.mergeOnCollision)
+			if shouldMerge {
+				o.MergeFrom(obj)
+				toRemove = append(toRemove, obj)
+			}
+		}
+	}
+
+	for _, obj := range toRemove {
+		w.RemoveObject(obj)
 	}
 }
 

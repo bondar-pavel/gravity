@@ -28,6 +28,11 @@ func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *
 		r.pixels[i] = 0
 	}
 
+	// Draw gravity field heatmap (before objects so they render on top)
+	if input.showField {
+		r.drawGravityField(world, cam)
+	}
+
 	// Draw objects
 	for _, o := range world.objects {
 		r.drawObject(o, cam, o == input.selectedObj)
@@ -149,21 +154,17 @@ func (r *Renderer) drawSlingshot(input *InputState, cam *Camera, world *World) {
 }
 
 func (r *Renderer) drawTrajectory(startX, startY, vx, vy float64, radius int, world *World, cam *Camera) {
-	// Simulate trajectory
 	px, py := startX, startY
 	svx, svy := vx, vy
 	mass := float64(radius * radius)
+	softSq := softeningParameter * softeningParameter
 
 	for step := 0; step < 200; step++ {
-		// Calculate gravitational forces from existing objects
 		var fx, fy float64
 		for _, o := range world.objects {
 			dx := o.x - px
 			dy := o.y - py
-			distSq := dx*dx + dy*dy
-			if distSq < 1 {
-				continue
-			}
+			distSq := dx*dx + dy*dy + softSq
 			sizeAdj := o.mass / mass
 			fx += gravitationalConstant * sizeAdj * dx / distSq
 			fy += gravitationalConstant * sizeAdj * dy / distSq
@@ -174,14 +175,12 @@ func (r *Renderer) drawTrajectory(startX, startY, vx, vy float64, radius int, wo
 		px += svx
 		py += svy
 
-		// Draw every 3rd point as a dot
 		if step%3 == 0 {
 			sx, sy := cam.WorldToScreen(px, py)
 			si := int(sx)
 			sj := int(sy)
 			if si >= 0 && si < screenWidth && sj >= 0 && sj < screenHeight {
 				idx := (sj*screenWidth + si) * 4
-				// Fade out over distance
 				brightness := byte(200 - step)
 				if step > 200 {
 					brightness = 50
@@ -193,6 +192,81 @@ func (r *Renderer) drawTrajectory(startX, startY, vx, vy float64, radius int, wo
 			}
 		}
 	}
+}
+
+const fieldGridSize = 8 // render every 8th pixel
+
+func (r *Renderer) drawGravityField(world *World, cam *Camera) {
+	if len(world.objects) == 0 {
+		return
+	}
+	softSq := softeningParameter * softeningParameter
+
+	for sy := 0; sy < screenHeight; sy += fieldGridSize {
+		for sx := 0; sx < screenWidth; sx += fieldGridSize {
+			wx, wy := cam.ScreenToWorld(float64(sx+fieldGridSize/2), float64(sy+fieldGridSize/2))
+
+			var field float64
+			for _, o := range world.objects {
+				dx := o.x - wx
+				dy := o.y - wy
+				distSq := dx*dx + dy*dy + softSq
+				field += o.mass / distSq
+			}
+			field *= gravitationalConstant
+
+			// Log scale mapping
+			intensity := math.Log1p(field * 5000)
+			if intensity > 4.0 {
+				intensity = 4.0
+			}
+
+			cr, cg, cb := fieldColor(intensity / 4.0)
+			if cr == 0 && cg == 0 && cb == 0 {
+				continue
+			}
+
+			// Fill the grid cell
+			maxX := sx + fieldGridSize
+			if maxX > screenWidth {
+				maxX = screenWidth
+			}
+			maxY := sy + fieldGridSize
+			if maxY > screenHeight {
+				maxY = screenHeight
+			}
+			for i := sx; i < maxX; i++ {
+				for j := sy; j < maxY; j++ {
+					idx := (j*screenWidth + i) * 4
+					r.pixels[idx] = cr
+					r.pixels[idx+1] = cg
+					r.pixels[idx+2] = cb
+					r.pixels[idx+3] = 0xFF
+				}
+			}
+		}
+	}
+}
+
+// fieldColor maps a 0..1 intensity to a blue → cyan → green → yellow → red gradient.
+func fieldColor(t float64) (byte, byte, byte) {
+	if t < 0.01 {
+		return 0, 0, 0
+	}
+	if t < 0.25 {
+		s := t / 0.25
+		return 0, byte(s * 80), byte(40 + s*80)
+	}
+	if t < 0.5 {
+		s := (t - 0.25) / 0.25
+		return 0, byte(80 + s*100), byte(120 - s*40)
+	}
+	if t < 0.75 {
+		s := (t - 0.5) / 0.25
+		return byte(s * 200), byte(180 + s*75), byte(80 - s*80)
+	}
+	s := (t - 0.75) / 0.25
+	return byte(200 + s*55), byte(255 - s*155), 0
 }
 
 func (r *Renderer) drawLine(x0, y0, x1, y1 float64, color [3]byte) {
@@ -242,6 +316,23 @@ func (r *Renderer) drawHUD(screen *ebiten.Image, world *World, input *InputState
 		len(world.objects), speedStr, pauseStr, input.nextRadius, fps)
 	ebitenutil.DebugPrintAt(r.hudImage, status, 8, 8)
 
+	// Physics modes
+	frictionStr := "OFF"
+	if world.frictionEnabled {
+		frictionStr = "ON"
+	}
+	mergeStr := "OFF"
+	if world.mergeOnCollision {
+		mergeStr = "ON"
+	}
+	fieldStr := "OFF"
+	if input.showField {
+		fieldStr = "ON"
+	}
+	modes := fmt.Sprintf("Friction: %s  Merge: %s  Restitution: %.1f  Field: %s",
+		frictionStr, mergeStr, world.restitution, fieldStr)
+	ebitenutil.DebugPrintAt(r.hudImage, modes, 8, 24)
+
 	// Selected object info
 	if input.selectedObj != nil {
 		o := input.selectedObj
@@ -251,11 +342,11 @@ func (r *Renderer) drawHUD(screen *ebiten.Image, world *World, input *InputState
 			pinnedStr = " [PINNED]"
 		}
 		info := fmt.Sprintf("Selected: mass=%.0f vel=%.3f%s", o.mass, vel, pinnedStr)
-		ebitenutil.DebugPrintAt(r.hudImage, info, 8, 24)
+		ebitenutil.DebugPrintAt(r.hudImage, info, 8, 40)
 	}
 
 	// Controls help (bottom)
-	help := "LMB: aim+launch  RMB: select  [/]: size  P: pause  +/-: speed  Scroll: zoom  MMB: pan  Del: remove  Space: pin"
+	help := "LMB: aim  RMB: select  [/]: size  P: pause  +/-: speed  Scroll: zoom  Del: remove  Space: pin  F: friction  M: merge  G: field"
 	ebitenutil.DebugPrintAt(r.hudImage, help, 8, int(hudH)-20)
 
 	// Draw HUD scaled up onto the main screen

@@ -29,6 +29,9 @@ type InputState struct {
 	camStartX  float64
 	camStartY  float64
 
+	// Visualization
+	showField bool
+
 	// Debounce tracking
 	prevKeys       map[ebiten.Key]bool
 	prevRightClick bool
@@ -56,6 +59,19 @@ func (s *InputState) Update(world *World, cam *Camera) {
 	s.handleCamera(cam)
 	s.handleSelection(world, cam)
 	s.handleMouse(world, cam)
+	s.handleToggles(world)
+}
+
+func (s *InputState) handleToggles(world *World) {
+	if s.justPressed(ebiten.KeyG) {
+		s.showField = !s.showField
+	}
+	if s.justPressed(ebiten.KeyM) {
+		world.mergeOnCollision = !world.mergeOnCollision
+	}
+	if s.justPressed(ebiten.KeyF) {
+		world.frictionEnabled = !world.frictionEnabled
+	}
 }
 
 func (s *InputState) handleTimeControl() {

@@ -11,6 +11,7 @@ const screenHeight = 1200
 
 const gravitationalConstant = 0.005
 const screenBounceEfficiency = 0.5
+const softeningParameter = 10.0
 
 // Game implements ebiten.Game interface.
 type Game struct {

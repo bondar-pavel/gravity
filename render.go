@@ -58,6 +58,13 @@ func (r *Renderer) drawObject(o *Object, cam *Camera, selected bool) {
 	sx, sy := cam.WorldToScreen(o.x, o.y)
 	sr := cam.WorldRadius(o.radius)
 
+	// Merge animation: expanding ring
+	if o.mergeTimer > 0 {
+		ringR := cam.WorldRadius(int(o.mergeRadius))
+		brightness := byte(255 * o.mergeTimer)
+		r.drawCircleOutline(sx, sy, ringR, [3]byte{brightness, brightness, brightness})
+	}
+
 	// Draw selection ring
 	if selected {
 		r.drawCircleOutline(sx, sy, sr+3, [3]byte{255, 255, 0})
@@ -68,8 +75,31 @@ func (r *Renderer) drawObject(o *Object, cam *Camera, selected bool) {
 		r.drawCircleOutline(sx, sy, sr+2, [3]byte{255, 100, 100})
 	}
 
+	// Merge animation: size pulse
+	drawRadius := sr
+	if o.mergeTimer > 0 {
+		drawRadius += int(3 * o.mergeTimer)
+	}
+
 	// Draw filled circle
-	r.drawFilledCircle(sx, sy, sr, o.color)
+	r.drawFilledCircle(sx, sy, drawRadius, o.color)
+
+	// Draw rotating spokes (skip for small particles)
+	if sr >= 6 {
+		spokeColor := [3]byte{o.color[0] / 2, o.color[1] / 2, o.color[2] / 2}
+		for i := 0; i < 3; i++ {
+			spokeAngle := o.angle + float64(i)*2*math.Pi/3
+			cos := math.Cos(spokeAngle)
+			sin := math.Sin(spokeAngle)
+			innerR := float64(drawRadius) * 0.4
+			outerR := float64(drawRadius) * 0.95
+			r.drawLine(
+				sx+cos*innerR, sy+sin*innerR,
+				sx+cos*outerR, sy+sin*outerR,
+				spokeColor,
+			)
+		}
+	}
 }
 
 func (r *Renderer) drawFilledCircle(cx, cy float64, radius int, color [3]byte) {

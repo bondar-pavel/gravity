@@ -11,6 +11,14 @@ type Object struct {
 	bouncedFrames        int
 	pinned               bool
 	color                [3]byte
+
+	// Rotation
+	angle           float64 // current angle in radians
+	angularVelocity float64 // radians per tick
+
+	// Merge animation
+	mergeTimer  float64 // 1.0 → 0.0, drives visual effect
+	mergeRadius float64 // expanding ring radius
 }
 
 // CalculateAcceleration returns gravitational acceleration from all other objects (with softening).
@@ -120,14 +128,71 @@ func (o *Object) CollideWith(obj *Object, restitution float64, merge bool) bool 
 	return false
 }
 
-// MergeFrom absorbs another object: conserves momentum, area-preserving radius.
+// UpdateRotation advances angle by angular velocity and decays merge animation.
+func (o *Object) UpdateRotation() {
+	o.angle += o.angularVelocity
+
+	if o.mergeTimer > 0 {
+		o.mergeTimer -= 0.02
+		o.mergeRadius += 3.0
+		if o.mergeTimer < 0 {
+			o.mergeTimer = 0
+		}
+	}
+}
+
+// MergeFrom absorbs another object: conserves linear and angular momentum.
 func (o *Object) MergeFrom(obj *Object) {
 	newMass := o.mass + obj.mass
-	o.velocityX = (o.mass*o.velocityX + obj.mass*obj.velocityX) / newMass
-	o.velocityY = (o.mass*o.velocityY + obj.mass*obj.velocityY) / newMass
-	o.radius = int(math.Sqrt(float64(o.radius*o.radius + obj.radius*obj.radius)))
-	if o.radius < 1 {
-		o.radius = 1
+
+	// New center-of-mass velocity
+	newVX := (o.mass*o.velocityX + obj.mass*obj.velocityX) / newMass
+	newVY := (o.mass*o.velocityY + obj.mass*obj.velocityY) / newMass
+
+	// Center of mass position
+	cx := (o.mass*o.x + obj.mass*obj.x) / newMass
+	cy := (o.mass*o.y + obj.mass*obj.y) / newMass
+
+	// Relative positions to center of mass
+	r1x, r1y := o.x-cx, o.y-cy
+	r2x, r2y := obj.x-cx, obj.y-cy
+
+	// Relative velocities to center of mass velocity
+	u1x, u1y := o.velocityX-newVX, o.velocityY-newVY
+	u2x, u2y := obj.velocityX-newVX, obj.velocityY-newVY
+
+	// Orbital angular momentum (2D cross product: r × v = rx*vy - ry*vx)
+	lOrbital := o.mass*(r1x*u1y-r1y*u1x) + obj.mass*(r2x*u2y-r2y*u2x)
+
+	// Spin angular momentum (I = 0.5 * m * r²)
+	i1 := 0.5 * o.mass * float64(o.radius*o.radius)
+	i2 := 0.5 * obj.mass * float64(obj.radius*obj.radius)
+	lSpin := i1*o.angularVelocity + i2*obj.angularVelocity
+
+	lTotal := lOrbital + lSpin
+
+	// New radius (area-preserving)
+	newRadius := int(math.Sqrt(float64(o.radius*o.radius + obj.radius*obj.radius)))
+	if newRadius < 1 {
+		newRadius = 1
 	}
-	o.mass = float64(o.radius * o.radius)
+
+	// New moment of inertia
+	iNew := 0.5 * newMass * float64(newRadius*newRadius)
+
+	// Apply
+	o.x = cx
+	o.y = cy
+	o.velocityX = newVX
+	o.velocityY = newVY
+	o.radius = newRadius
+	o.mass = float64(newRadius * newRadius)
+
+	if iNew > 0 {
+		o.angularVelocity = lTotal / iNew
+	}
+
+	// Trigger merge animation
+	o.mergeTimer = 1.0
+	o.mergeRadius = float64(o.radius)
 }

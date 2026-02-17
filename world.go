@@ -102,6 +102,11 @@ func (w *World) StepPhysics() {
 			o.BounceOnScreenCollision()
 		}
 	}
+
+	// Rotation and merge animation
+	for _, o := range w.objects {
+		o.UpdateRotation()
+	}
 }
 
 func (w *World) handleCollisions() {

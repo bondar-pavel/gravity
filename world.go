@@ -13,7 +13,7 @@ type World struct {
 func newWorld() *World {
 	return &World{
 		objects:                   make([]*Object, 0),
-		bounceOnScreenCollision:   true,
+		bounceOnScreenCollision:   false,
 		bounceOnParticleCollision: true,
 		frictionCoeff:             0.001,
 		restitution:               0.8,
@@ -103,6 +103,9 @@ func (w *World) StepPhysics() {
 		}
 	}
 
+	// Remove objects that drifted far outside the observable area
+	w.cullDistantObjects()
+
 	// Rotation and merge animation
 	for _, o := range w.objects {
 		o.UpdateRotation()
@@ -126,6 +129,27 @@ func (w *World) handleCollisions() {
 
 	for _, obj := range toRemove {
 		w.RemoveObject(obj)
+	}
+}
+
+const cullDistance = 5000 // remove objects this far from screen center
+
+func (w *World) cullDistantObjects() {
+	cx := float64(screenWidth) / 2
+	cy := float64(screenHeight) / 2
+	var toRemove []*Object
+	for _, o := range w.objects {
+		if o.pinned {
+			continue
+		}
+		dx := o.x - cx
+		dy := o.y - cy
+		if dx*dx+dy*dy > cullDistance*cullDistance {
+			toRemove = append(toRemove, o)
+		}
+	}
+	for _, o := range toRemove {
+		w.RemoveObject(o)
 	}
 }
 

@@ -42,11 +42,13 @@ func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *
 		// Draw orbit zone circle
 		r.drawOrbitZone(challenge, cam)
 
-		// Draw tether line from orbiter to orbit center
+		// Draw tether line and projected trajectory while orbiting
 		if challenge.state == ChallengeOrbiting && challenge.orbiter != nil {
-			ox, oy := cam.WorldToScreen(challenge.orbiter.x, challenge.orbiter.y)
+			o := challenge.orbiter
+			ox, oy := cam.WorldToScreen(o.x, o.y)
 			cx, cy := cam.WorldToScreen(challenge.orbitCenter[0], challenge.orbitCenter[1])
 			r.drawDashedLine(ox, oy, cx, cy, [3]byte{60, 60, 80})
+			r.drawTrajectory(o.x, o.y, o.velocityX, o.velocityY, o.radius, world, cam)
 		}
 
 		// Draw slingshot aiming visuals (challenge uses same slingshot)

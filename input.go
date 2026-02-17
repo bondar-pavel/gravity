@@ -30,7 +30,8 @@ type InputState struct {
 	camStartY float64
 
 	// Visualization
-	showField bool
+	showField        bool
+	showTrajectories bool
 
 	// Debounce tracking
 	prevKeys       map[ebiten.Key]bool
@@ -41,6 +42,7 @@ func newInputState() *InputState {
 	return &InputState{
 		nextRadius: 10,
 		simSpeed:   1.0,
+		paused:     true,
 		prevKeys:   make(map[ebiten.Key]bool),
 	}
 }
@@ -53,7 +55,7 @@ func (s *InputState) justPressed(key ebiten.Key) bool {
 	return pressed && !was
 }
 
-func (s *InputState) Update(world *World, cam *Camera, challenge *Challenge) {
+func (s *InputState) Update(world *World, cam *Camera, challenge *Challenge, target *TargetPractice) {
 	// Challenge mode toggle
 	if s.justPressed(ebiten.KeyO) {
 		if challenge.active {
@@ -62,7 +64,30 @@ func (s *InputState) Update(world *World, cam *Camera, challenge *Challenge) {
 			s.dragging = false
 			return
 		}
+		if target.active {
+			target.Exit(world)
+			s.aiming = false
+		}
 		challenge.Enter(world)
+		s.aiming = false
+		s.dragging = false
+		s.selectedObj = nil
+		return
+	}
+
+	// Target practice toggle
+	if s.justPressed(ebiten.KeyT) {
+		if target.active {
+			target.Exit(world)
+			s.aiming = false
+			s.dragging = false
+			return
+		}
+		if challenge.active {
+			challenge.Exit(world)
+			s.aiming = false
+		}
+		target.Enter(world)
 		s.aiming = false
 		s.dragging = false
 		s.selectedObj = nil
@@ -73,6 +98,13 @@ func (s *InputState) Update(world *World, cam *Camera, challenge *Challenge) {
 		s.handleTimeControl()
 		s.handleCamera(cam)
 		s.handleChallengeInput(world, cam, challenge)
+		return
+	}
+
+	if target.active {
+		s.handleTimeControl()
+		s.handleCamera(cam)
+		s.handleTargetInput(world, cam, target)
 		return
 	}
 
@@ -140,9 +172,68 @@ func (s *InputState) handleChallengeInput(world *World, cam *Camera, ch *Challen
 	}
 }
 
+func (s *InputState) handleTargetInput(world *World, cam *Camera, tp *TargetPractice) {
+	// Escape exits target practice
+	if s.justPressed(ebiten.KeyEscape) {
+		tp.Exit(world)
+		s.aiming = false
+		return
+	}
+
+	// Level cycling (only when not flying)
+	if tp.state != TargetFlying {
+		if s.justPressed(ebiten.KeyArrowLeft) {
+			tp.ChangeLevel(-1, world)
+		}
+		if s.justPressed(ebiten.KeyArrowRight) {
+			tp.ChangeLevel(1, world)
+		}
+	}
+
+	// After complete: click to retry
+	if tp.state == TargetComplete {
+		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) && !s.aiming {
+			tp.RetryLevel(world)
+		}
+		s.aiming = false
+		return
+	}
+
+	// Slingshot aiming (only when in aiming state)
+	if tp.state != TargetAiming {
+		return
+	}
+
+	if s.panning {
+		return
+	}
+
+	cx, cy := ebiten.CursorPosition()
+	wx, wy := cam.ScreenToWorld(float64(cx), float64(cy))
+
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		if !s.aiming {
+			s.aiming = true
+			s.aimStartX = wx
+			s.aimStartY = wy
+		}
+	} else {
+		if s.aiming {
+			dx := wx - s.aimStartX
+			dy := wy - s.aimStartY
+			launchScale := 0.05
+			tp.LaunchProjectile(world, s.aimStartX, s.aimStartY, -dx*launchScale, -dy*launchScale)
+		}
+		s.aiming = false
+	}
+}
+
 func (s *InputState) handleToggles(world *World) {
 	if s.justPressed(ebiten.KeyG) {
 		s.showField = !s.showField
+	}
+	if s.justPressed(ebiten.KeyV) {
+		s.showTrajectories = !s.showTrajectories
 	}
 	if s.justPressed(ebiten.KeyM) {
 		world.mergeOnCollision = !world.mergeOnCollision

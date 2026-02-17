@@ -25,6 +25,7 @@ func newWorld() *World {
 		objects:                   make([]*Object, 0),
 		bounceOnScreenCollision:   false,
 		bounceOnParticleCollision: true,
+		mergeOnCollision:          true,
 		frictionCoeff:             0.001,
 		restitution:               0.8,
 	}

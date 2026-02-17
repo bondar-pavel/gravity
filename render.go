@@ -18,7 +18,7 @@ func newRenderer() *Renderer {
 	return &Renderer{}
 }
 
-func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *InputState, challenge *Challenge) {
+func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *InputState, challenge *Challenge, target *TargetPractice) {
 	if r.pixels == nil {
 		r.pixels = make([]byte, screenWidth*screenHeight*4)
 	}
@@ -58,7 +58,26 @@ func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *
 		if input.aiming {
 			r.drawChallengeSlingshot(input, cam, world)
 		}
+	} else if target.active {
+		// Draw target zones
+		r.drawTargetZones(target, cam)
+
+		// Draw projected trajectory while flying
+		if target.state == TargetFlying && target.projectile != nil {
+			p := target.projectile
+			r.drawTrajectory(p.x, p.y, p.velocityX, p.velocityY, p.radius, world, cam)
+		}
+
+		// Draw slingshot aiming visuals
+		if input.aiming {
+			r.drawChallengeSlingshot(input, cam, world)
+		}
 	} else {
+		// Draw projected trajectories for all moving objects
+		if input.showTrajectories {
+			r.drawObjectTrajectories(world, cam)
+		}
+
 		// Draw ghost preview at cursor
 		if !input.aiming && !input.dragging {
 			r.drawGhostCircle(input, cam)
@@ -75,6 +94,8 @@ func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *
 	// HUD on top (uses ebiten text rendering, not pixel buffer)
 	if challenge.active {
 		r.drawChallengeHUD(screen, challenge, input)
+	} else if target.active {
+		r.drawTargetHUD(screen, target, input)
 	} else {
 		r.drawHUD(screen, world, input)
 	}
@@ -323,6 +344,54 @@ func (r *Renderer) drawTrajectory(startX, startY, vx, vy float64, radius int, wo
 	}
 }
 
+func (r *Renderer) drawObjectTrajectories(world *World, cam *Camera) {
+	softSq := softeningParameter * softeningParameter
+
+	for _, obj := range world.objects {
+		if obj.pinned {
+			continue
+		}
+		px, py := obj.x, obj.y
+		svx, svy := obj.velocityX, obj.velocityY
+
+		for step := 0; step < 200; step++ {
+			var fx, fy float64
+			for _, o := range world.objects {
+				if o == obj {
+					continue
+				}
+				dx := o.x - px
+				dy := o.y - py
+				distSq := dx*dx + dy*dy
+				force := gravitationalConstant * o.mass / (distSq + softSq)
+				dist := math.Sqrt(distSq)
+				if dist > 0 {
+					fx += force * dx / dist
+					fy += force * dy / dist
+				}
+			}
+
+			svx += fx
+			svy += fy
+			px += svx
+			py += svy
+
+			if step%3 == 0 {
+				sx, sy := cam.WorldToScreen(px, py)
+				si, sj := int(sx), int(sy)
+				if si >= 0 && si < screenWidth && sj >= 0 && sj < screenHeight {
+					idx := (sj*screenWidth + si) * 4
+					fade := 1.0 - float64(step)/200.0
+					r.pixels[idx] = byte(float64(obj.color[0]) * fade)
+					r.pixels[idx+1] = byte(float64(obj.color[1]) * fade)
+					r.pixels[idx+2] = byte(float64(obj.color[2]) * fade)
+					r.pixels[idx+3] = 0xFF
+				}
+			}
+		}
+	}
+}
+
 const fieldGridSize = 8 // render every 8th pixel
 
 func (r *Renderer) drawGravityField(world *World, cam *Camera) {
@@ -476,7 +545,7 @@ func (r *Renderer) drawHUD(screen *ebiten.Image, world *World, input *InputState
 
 	// Controls help (bottom)
 	help1 := "[LMB] Aim  [RMB] Select  [[] []] Size  [P] Pause  [+] [-] Speed  [Scroll] Zoom  [Home] Reset cam"
-	help2 := "[Del] Remove  [Space] Pin  [F] Friction  [M] Merge  [G] Field  [O] Orbit Challenge"
+	help2 := "[Del] Remove  [Space] Pin  [F] Friction  [M] Merge  [G] Field  [V] Trajectories  [O] Orbit Challenge  [T] Target Practice"
 	ebitenutil.DebugPrintAt(r.hudImage, help1, 8, int(hudH)-36)
 	ebitenutil.DebugPrintAt(r.hudImage, help2, 8, int(hudH)-20)
 
@@ -621,6 +690,117 @@ func (r *Renderer) drawChallengeHUD(screen *ebiten.Image, ch *Challenge, input *
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(hudScale, hudScale)
 	screen.DrawImage(r.hudImage, op)
+}
+
+// --- Target Practice rendering ---
+
+func (r *Renderer) drawTargetZones(tp *TargetPractice, cam *Camera) {
+	for _, t := range tp.targets {
+		sx, sy := cam.WorldToScreen(t.X, t.Y)
+		sr := int(t.Radius * cam.zoom)
+
+		if t.Hit {
+			// Gold filled circle (dim) + bright ring
+			r.drawFilledCircle(sx, sy, sr, [3]byte{60, 50, 10})
+			r.drawCircleOutline(sx, sy, sr, [3]byte{255, 200, 50})
+			r.drawCircleOutline(sx, sy, sr-1, [3]byte{255, 200, 50})
+		} else {
+			// Green dashed circle
+			steps := sr * 4
+			if steps < 60 {
+				steps = 60
+			}
+			dashLen := 10
+			for i := 0; i < steps; i++ {
+				if (i/dashLen)%2 != 0 {
+					continue
+				}
+				angle := 2 * math.Pi * float64(i) / float64(steps)
+				px := sx + float64(sr)*math.Cos(angle)
+				py := sy + float64(sr)*math.Sin(angle)
+				ix := int(px)
+				iy := int(py)
+				if ix >= 0 && ix < screenWidth && iy >= 0 && iy < screenHeight {
+					idx := (iy*screenWidth + ix) * 4
+					r.pixels[idx] = 50
+					r.pixels[idx+1] = 200
+					r.pixels[idx+2] = 80
+					r.pixels[idx+3] = 0xFF
+				}
+			}
+			// Faint fill
+			r.drawFilledCircle(sx, sy, sr, [3]byte{10, 30, 15})
+		}
+	}
+}
+
+func (r *Renderer) drawTargetHUD(screen *ebiten.Image, tp *TargetPractice, input *InputState) {
+	hudW := screenWidth / hudScale
+	hudH := screenHeight / hudScale
+	if r.hudImage == nil {
+		r.hudImage = ebiten.NewImage(int(hudW), int(hudH))
+	}
+	r.hudImage.Clear()
+
+	level := tp.CurrentLevel()
+
+	// Top-left: level info
+	title := fmt.Sprintf("TARGET PRACTICE - Level %d: %s", tp.currentLevel+1, level.Name)
+	ebitenutil.DebugPrintAt(r.hudImage, title, 8, 8)
+
+	// Launches and par
+	scoreStr := fmt.Sprintf("Launches: %d / Par: %d    Targets: %d/%d",
+		tp.launches, level.Par, tp.HitsCount(), len(tp.targets))
+	ebitenutil.DebugPrintAt(r.hudImage, scoreStr, 8, 24)
+
+	// Best stars
+	best := tp.bestStars[tp.currentLevel]
+	if best > 0 {
+		starStr := fmt.Sprintf("Best: %s", starString(best))
+		ebitenutil.DebugPrintAt(r.hudImage, starStr, 8, 40)
+	}
+
+	// Speed info
+	speedStr := fmt.Sprintf("Speed: %.1fx", input.simSpeed)
+	pauseStr := ""
+	if input.paused {
+		pauseStr = "  [PAUSED]"
+	}
+	ebitenutil.DebugPrintAt(r.hudImage, speedStr+pauseStr, 8, 56)
+
+	// Center message on complete
+	if tp.state == TargetComplete {
+		stars := tp.StarRating()
+		msg := fmt.Sprintf("COMPLETE!  %d launches  %s", tp.launches, starString(stars))
+		centerX := int(hudW)/2 - len(msg)*3
+		centerY := int(hudH) / 2
+		ebitenutil.DebugPrintAt(r.hudImage, msg, centerX, centerY)
+
+		retry := "Click to retry"
+		ebitenutil.DebugPrintAt(r.hudImage, retry, int(hudW)/2-len(retry)*3, centerY+20)
+	}
+
+	// Bottom help
+	help := "[LMB] Launch  [Left] [Right] Change level  [P] Pause  [+] [-] Speed  [Scroll] Zoom  [T] [Esc] Exit"
+	ebitenutil.DebugPrintAt(r.hudImage, help, 8, int(hudH)-20)
+
+	// Scale and draw
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(hudScale, hudScale)
+	screen.DrawImage(r.hudImage, op)
+}
+
+func starString(stars int) string {
+	switch stars {
+	case 3:
+		return "***"
+	case 2:
+		return "** "
+	case 1:
+		return "*  "
+	default:
+		return "   "
+	}
 }
 
 func clampInt(v, min, max int) int {

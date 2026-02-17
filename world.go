@@ -1,13 +1,23 @@
 package main
 
+import "math"
+
 type World struct {
 	objects                   []*Object
+	ejecta                    []Ejecta
 	bounceOnScreenCollision   bool
 	bounceOnParticleCollision bool
 	mergeOnCollision          bool
 	frictionEnabled           bool
 	frictionCoeff             float64
 	restitution               float64
+}
+
+type Ejecta struct {
+	x, y   float64
+	vx, vy float64
+	life   float64 // 1.0 → 0.0
+	size   float64 // initial pixel radius
 }
 
 func newWorld() *World {
@@ -110,6 +120,9 @@ func (w *World) StepPhysics() {
 	for _, o := range w.objects {
 		o.UpdateRotation()
 	}
+
+	// Update ejecta
+	w.updateEjecta()
 }
 
 func (w *World) handleCollisions() {
@@ -121,7 +134,13 @@ func (w *World) handleCollisions() {
 			obj := w.objects[j]
 			shouldMerge := o.CollideWith(obj, w.restitution, w.mergeOnCollision)
 			if shouldMerge {
+				speed := math.Sqrt(
+					(o.velocityX-obj.velocityX)*(o.velocityX-obj.velocityX)+
+						(o.velocityY-obj.velocityY)*(o.velocityY-obj.velocityY)) + 1.0
+				mx := (o.x + obj.x) / 2
+				my := (o.y + obj.y) / 2
 				o.MergeFrom(obj)
+				w.SpawnEjecta(mx, my, speed, 8+int(speed))
 				toRemove = append(toRemove, obj)
 			}
 		}
@@ -130,6 +149,42 @@ func (w *World) handleCollisions() {
 	for _, obj := range toRemove {
 		w.RemoveObject(obj)
 	}
+}
+
+func (w *World) SpawnEjecta(x, y, speed float64, count int) {
+	if count > 16 {
+		count = 16
+	}
+	for i := 0; i < count; i++ {
+		angle := 2 * math.Pi * float64(i) / float64(count)
+		// Vary speed slightly per particle
+		s := speed * (0.5 + 0.8*float64((i*7+3)%10)/10.0)
+		w.ejecta = append(w.ejecta, Ejecta{
+			x:    x,
+			y:    y,
+			vx:   math.Cos(angle) * s,
+			vy:   math.Sin(angle) * s,
+			life: 1.0,
+			size: 2.0 + float64(i%3),
+		})
+	}
+}
+
+func (w *World) updateEjecta() {
+	n := 0
+	for i := range w.ejecta {
+		e := &w.ejecta[i]
+		e.x += e.vx
+		e.y += e.vy
+		e.vx *= 0.97 // drag
+		e.vy *= 0.97
+		e.life -= 0.015
+		if e.life > 0 {
+			w.ejecta[n] = *e
+			n++
+		}
+	}
+	w.ejecta = w.ejecta[:n]
 }
 
 const cullDistance = 5000 // remove objects this far from screen center

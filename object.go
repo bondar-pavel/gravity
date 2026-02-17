@@ -19,6 +19,7 @@ type Object struct {
 	// Merge animation
 	mergeTimer  float64 // 1.0 → 0.0, drives visual effect
 	mergeRadius float64 // expanding ring radius
+	mergeFlash  float64 // 1.0 → 0.0, white-hot flash cooling
 }
 
 // CalculateAcceleration returns gravitational acceleration from all other objects (with softening).
@@ -133,10 +134,16 @@ func (o *Object) UpdateRotation() {
 	o.angle += o.angularVelocity
 
 	if o.mergeTimer > 0 {
-		o.mergeTimer -= 0.02
-		o.mergeRadius += 3.0
+		o.mergeTimer -= 0.015
+		o.mergeRadius += 5.0
 		if o.mergeTimer < 0 {
 			o.mergeTimer = 0
+		}
+	}
+	if o.mergeFlash > 0 {
+		o.mergeFlash -= 0.03
+		if o.mergeFlash < 0 {
+			o.mergeFlash = 0
 		}
 	}
 }
@@ -195,4 +202,5 @@ func (o *Object) MergeFrom(obj *Object) {
 	// Trigger merge animation
 	o.mergeTimer = 1.0
 	o.mergeRadius = float64(o.radius)
+	o.mergeFlash = 1.0
 }

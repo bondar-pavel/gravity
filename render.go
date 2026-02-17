@@ -38,6 +38,9 @@ func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *
 		r.drawObject(o, cam, o == input.selectedObj)
 	}
 
+	// Draw ejecta debris
+	r.drawEjecta(world, cam)
+
 	if challenge.active {
 		// Draw orbit zone circle
 		r.drawOrbitZone(challenge, cam)
@@ -81,11 +84,27 @@ func (r *Renderer) drawObject(o *Object, cam *Camera, selected bool) {
 	sx, sy := cam.WorldToScreen(o.x, o.y)
 	sr := cam.WorldRadius(o.radius)
 
-	// Merge animation: expanding ring
+	// Merge animation: shockwave rings
 	if o.mergeTimer > 0 {
 		ringR := cam.WorldRadius(int(o.mergeRadius))
-		brightness := byte(255 * o.mergeTimer)
-		r.drawCircleOutline(sx, sy, ringR, [3]byte{brightness, brightness, brightness})
+		b := byte(255 * o.mergeTimer)
+		r.drawCircleOutline(sx, sy, ringR, [3]byte{b, b, b})
+		if ringR > 2 {
+			b2 := byte(180 * o.mergeTimer)
+			r.drawCircleOutline(sx, sy, ringR-2, [3]byte{b2, b2, b2})
+		}
+		if ringR > 4 {
+			b3 := byte(100 * o.mergeTimer)
+			r.drawCircleOutline(sx, sy, ringR-4, [3]byte{b3, b3, b3})
+		}
+	}
+
+	// Merge animation: glow halo (early phase)
+	if o.mergeTimer > 0.5 {
+		glowIntensity := (o.mergeTimer - 0.5) * 2 // 1.0 → 0.0
+		glowR := sr + int(float64(sr)*0.6*glowIntensity)
+		gb := byte(40 * glowIntensity)
+		r.drawFilledCircle(sx, sy, glowR, [3]byte{byte(80 * glowIntensity), gb, byte(20 * glowIntensity)})
 	}
 
 	// Draw selection ring
@@ -98,14 +117,33 @@ func (r *Renderer) drawObject(o *Object, cam *Camera, selected bool) {
 		r.drawCircleOutline(sx, sy, sr+2, [3]byte{255, 100, 100})
 	}
 
-	// Merge animation: size pulse
+	// Merge animation: size oscillation with damping
 	drawRadius := sr
 	if o.mergeTimer > 0 {
-		drawRadius += int(3 * o.mergeTimer)
+		drawRadius += int(math.Sin(o.mergeTimer*4*math.Pi) * 4 * o.mergeTimer)
+	}
+
+	// Flash color: interpolate toward white-hot during mergeFlash
+	drawColor := o.color
+	if o.mergeFlash > 0 {
+		f := o.mergeFlash
+		if f > 0.5 {
+			// White-hot phase
+			t := (f - 0.5) * 2 // 1.0 → 0.0
+			drawColor[0] = byte(float64(o.color[0]) + (255-float64(o.color[0]))*t)
+			drawColor[1] = byte(float64(o.color[1]) + (255-float64(o.color[1]))*t)
+			drawColor[2] = byte(float64(o.color[2]) + (255-float64(o.color[2]))*t)
+		} else {
+			// Cooling: yellow → orange → original
+			t := f * 2 // 1.0 → 0.0
+			drawColor[0] = byte(float64(o.color[0]) + (255-float64(o.color[0]))*t)
+			drawColor[1] = byte(float64(o.color[1]) + (200-float64(o.color[1]))*t)
+			drawColor[2] = o.color[2]
+		}
 	}
 
 	// Draw filled circle
-	r.drawFilledCircle(sx, sy, drawRadius, o.color)
+	r.drawFilledCircle(sx, sy, drawRadius, drawColor)
 
 	// Draw rotating spokes (skip for small particles)
 	if sr >= 6 {
@@ -172,6 +210,44 @@ func (r *Renderer) drawCircleOutline(cx, cy float64, radius int, color [3]byte) 
 				r.pixels[idx+3] = 0xFF
 			}
 		}
+	}
+}
+
+func (r *Renderer) drawEjecta(world *World, cam *Camera) {
+	for i := range world.ejecta {
+		e := &world.ejecta[i]
+		sx, sy := cam.WorldToScreen(e.x, e.y)
+		ix := int(sx)
+		iy := int(sy)
+		if ix < -10 || ix > screenWidth+10 || iy < -10 || iy > screenHeight+10 {
+			continue
+		}
+
+		// Color: white → yellow → orange → dark red based on life
+		var cr, cg, cb byte
+		if e.life > 0.6 {
+			t := (e.life - 0.6) / 0.4
+			cr = byte(255)
+			cg = byte(180 + 75*t)
+			cb = byte(100 + 155*t)
+		} else if e.life > 0.3 {
+			t := (e.life - 0.3) / 0.3
+			cr = byte(200 + 55*t)
+			cg = byte(80 + 100*t)
+			cb = byte(t * 100)
+		} else {
+			t := e.life / 0.3
+			cr = byte(80 + 120*t)
+			cg = byte(20 + 60*t)
+			cb = 0
+		}
+
+		// Size shrinks over life
+		sz := int(e.size * e.life)
+		if sz < 1 {
+			sz = 1
+		}
+		r.drawFilledCircle(sx, sy, sz, [3]byte{cr, cg, cb})
 	}
 }
 

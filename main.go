@@ -15,24 +15,25 @@ const softeningParameter = 10.0
 
 // Game implements ebiten.Game interface.
 type Game struct {
-	world    *World
-	camera   *Camera
-	input    *InputState
-	renderer *Renderer
+	world     *World
+	camera    *Camera
+	input     *InputState
+	renderer  *Renderer
+	challenge *Challenge
 }
 
 // Update proceeds the game state.
 func (g *Game) Update() error {
-	g.input.Update(g.world, g.camera)
+	g.input.Update(g.world, g.camera, g.challenge)
 
 	if !g.input.paused {
-		// Run multiple physics sub-steps for higher sim speeds
 		steps := int(g.input.simSpeed * 2)
 		if steps < 1 {
 			steps = 1
 		}
 		for i := 0; i < steps; i++ {
 			g.world.StepPhysics()
+			g.challenge.Update(g.world)
 		}
 	}
 	return nil
@@ -40,7 +41,7 @@ func (g *Game) Update() error {
 
 // Draw draws the game screen.
 func (g *Game) Draw(screen *ebiten.Image) {
-	g.renderer.Draw(screen, g.world, g.camera, g.input)
+	g.renderer.Draw(screen, g.world, g.camera, g.input, g.challenge)
 }
 
 // Layout returns the logical screen size.
@@ -56,10 +57,11 @@ func main() {
 	world.AddObject(220, 110, 8)
 
 	game := &Game{
-		world:    world,
-		camera:   newCamera(),
-		input:    newInputState(),
-		renderer: newRenderer(),
+		world:     world,
+		camera:    newCamera(),
+		input:     newInputState(),
+		renderer:  newRenderer(),
+		challenge: newChallenge(),
 	}
 
 	ebiten.SetWindowSize(800, 600)

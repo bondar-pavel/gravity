@@ -4,13 +4,13 @@ import "github.com/hajimehoshi/ebiten/v2"
 
 type InputState struct {
 	// Slingshot aiming
-	aiming   bool
+	aiming    bool
 	aimStartX float64
 	aimStartY float64
 
 	// Object dragging
-	dragging  bool
-	dragObj   *Object
+	dragging bool
+	dragObj  *Object
 
 	// Selection
 	selectedObj *Object
@@ -23,11 +23,11 @@ type InputState struct {
 	simSpeed float64
 
 	// Camera panning
-	panning    bool
-	panStartX  float64
-	panStartY  float64
-	camStartX  float64
-	camStartY  float64
+	panning   bool
+	panStartX float64
+	panStartY float64
+	camStartX float64
+	camStartY float64
 
 	// Visualization
 	showField bool
@@ -53,13 +53,91 @@ func (s *InputState) justPressed(key ebiten.Key) bool {
 	return pressed && !was
 }
 
-func (s *InputState) Update(world *World, cam *Camera) {
+func (s *InputState) Update(world *World, cam *Camera, challenge *Challenge) {
+	// Challenge mode toggle
+	if s.justPressed(ebiten.KeyO) {
+		if challenge.active {
+			challenge.Exit(world)
+			s.aiming = false
+			s.dragging = false
+			return
+		}
+		challenge.Enter(world)
+		s.aiming = false
+		s.dragging = false
+		s.selectedObj = nil
+		return
+	}
+
+	if challenge.active {
+		s.handleTimeControl()
+		s.handleCamera(cam)
+		s.handleChallengeInput(world, cam, challenge)
+		return
+	}
+
+	// Normal sandbox mode
 	s.handleTimeControl()
 	s.handleSizeControl()
 	s.handleCamera(cam)
 	s.handleSelection(world, cam)
 	s.handleMouse(world, cam)
 	s.handleToggles(world)
+}
+
+func (s *InputState) handleChallengeInput(world *World, cam *Camera, ch *Challenge) {
+	// Escape exits challenge
+	if s.justPressed(ebiten.KeyEscape) {
+		ch.Exit(world)
+		s.aiming = false
+		return
+	}
+
+	// Level cycling
+	if s.justPressed(ebiten.KeyArrowLeft) {
+		ch.ChangeLevel(-1, world)
+	}
+	if s.justPressed(ebiten.KeyArrowRight) {
+		ch.ChangeLevel(1, world)
+	}
+
+	// After crash/escape: click to retry
+	if ch.state == ChallengeCrashed || ch.state == ChallengeEscaped {
+		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) && !s.aiming {
+			ch.RetryLevel(world)
+		}
+		s.aiming = false
+		s.dragging = false
+		return
+	}
+
+	// Slingshot aiming (only when in aiming state)
+	if ch.state != ChallengeAiming {
+		return
+	}
+
+	if s.panning {
+		return
+	}
+
+	cx, cy := ebiten.CursorPosition()
+	wx, wy := cam.ScreenToWorld(float64(cx), float64(cy))
+
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		if !s.aiming {
+			s.aiming = true
+			s.aimStartX = wx
+			s.aimStartY = wy
+		}
+	} else {
+		if s.aiming {
+			dx := wx - s.aimStartX
+			dy := wy - s.aimStartY
+			launchScale := 0.05
+			ch.LaunchOrbiter(world, s.aimStartX, s.aimStartY, -dx*launchScale, -dy*launchScale)
+		}
+		s.aiming = false
+	}
 }
 
 func (s *InputState) handleToggles(world *World) {
@@ -108,7 +186,6 @@ func (s *InputState) handleSizeControl() {
 }
 
 func (s *InputState) handleCamera(cam *Camera) {
-	// Zoom with scroll wheel
 	_, dy := ebiten.Wheel()
 	if dy > 0 {
 		cam.ZoomAt(1.1)
@@ -116,7 +193,6 @@ func (s *InputState) handleCamera(cam *Camera) {
 		cam.ZoomAt(1.0 / 1.1)
 	}
 
-	// Pan with middle mouse button
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonMiddle) {
 		cx, cy := ebiten.CursorPosition()
 		if !s.panning {
@@ -135,7 +211,6 @@ func (s *InputState) handleCamera(cam *Camera) {
 		s.panning = false
 	}
 
-	// Reset with Home
 	if s.justPressed(ebiten.KeyHome) {
 		cam.Reset()
 	}
@@ -150,7 +225,7 @@ func (s *InputState) handleSelection(world *World, cam *Camera) {
 		cx, cy := ebiten.CursorPosition()
 		wx, wy := cam.ScreenToWorld(float64(cx), float64(cy))
 		obj := world.FindObject(wx, wy, 15)
-		s.selectedObj = obj // nil deselects
+		s.selectedObj = obj
 	}
 
 	if s.selectedObj != nil {
@@ -165,7 +240,6 @@ func (s *InputState) handleSelection(world *World, cam *Camera) {
 }
 
 func (s *InputState) handleMouse(world *World, cam *Camera) {
-	// Skip if panning
 	if s.panning {
 		return
 	}
@@ -175,20 +249,17 @@ func (s *InputState) handleMouse(world *World, cam *Camera) {
 
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 		if !s.aiming && !s.dragging {
-			// Check if clicking on existing object
 			obj := world.FindObject(wx, wy, 15)
 			if obj != nil {
 				s.dragging = true
 				s.dragObj = obj
 			} else {
-				// Start aiming
 				s.aiming = true
 				s.aimStartX = wx
 				s.aimStartY = wy
 			}
 		}
 
-		// Continue dragging
 		if s.dragging && s.dragObj != nil {
 			s.dragObj.x = wx
 			s.dragObj.y = wy
@@ -196,9 +267,7 @@ func (s *InputState) handleMouse(world *World, cam *Camera) {
 			s.dragObj.velocityY = 0
 		}
 	} else {
-		// Mouse released
 		if s.aiming {
-			// Launch particle: velocity is opposite to drag direction
 			dx := wx - s.aimStartX
 			dy := wy - s.aimStartY
 			launchScale := 0.05
@@ -213,7 +282,6 @@ func (s *InputState) handleMouse(world *World, cam *Camera) {
 	}
 }
 
-// cursorWorld returns the cursor position in world coordinates.
 func (s *InputState) cursorWorld(cam *Camera) (float64, float64) {
 	cx, cy := ebiten.CursorPosition()
 	return cam.ScreenToWorld(float64(cx), float64(cy))

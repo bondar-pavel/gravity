@@ -18,7 +18,7 @@ func newRenderer() *Renderer {
 	return &Renderer{}
 }
 
-func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *InputState) {
+func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *InputState, challenge *Challenge) {
 	if r.pixels == nil {
 		r.pixels = make([]byte, screenWidth*screenHeight*4)
 	}
@@ -38,20 +38,41 @@ func (r *Renderer) Draw(screen *ebiten.Image, world *World, cam *Camera, input *
 		r.drawObject(o, cam, o == input.selectedObj)
 	}
 
-	// Draw ghost preview at cursor
-	if !input.aiming && !input.dragging {
-		r.drawGhostCircle(input, cam)
-	}
+	if challenge.active {
+		// Draw orbit zone circle
+		r.drawOrbitZone(challenge, cam)
 
-	// Draw slingshot aiming visuals
-	if input.aiming {
-		r.drawSlingshot(input, cam, world)
+		// Draw tether line from orbiter to orbit center
+		if challenge.state == ChallengeOrbiting && challenge.orbiter != nil {
+			ox, oy := cam.WorldToScreen(challenge.orbiter.x, challenge.orbiter.y)
+			cx, cy := cam.WorldToScreen(challenge.orbitCenter[0], challenge.orbitCenter[1])
+			r.drawDashedLine(ox, oy, cx, cy, [3]byte{60, 60, 80})
+		}
+
+		// Draw slingshot aiming visuals (challenge uses same slingshot)
+		if input.aiming {
+			r.drawChallengeSlingshot(input, cam, world)
+		}
+	} else {
+		// Draw ghost preview at cursor
+		if !input.aiming && !input.dragging {
+			r.drawGhostCircle(input, cam)
+		}
+
+		// Draw slingshot aiming visuals
+		if input.aiming {
+			r.drawSlingshot(input, cam, world)
+		}
 	}
 
 	screen.WritePixels(r.pixels)
 
 	// HUD on top (uses ebiten text rendering, not pixel buffer)
-	r.drawHUD(screen, world, input)
+	if challenge.active {
+		r.drawChallengeHUD(screen, challenge, input)
+	} else {
+		r.drawHUD(screen, world, input)
+	}
 }
 
 func (r *Renderer) drawObject(o *Object, cam *Camera, selected bool) {
@@ -376,10 +397,149 @@ func (r *Renderer) drawHUD(screen *ebiten.Image, world *World, input *InputState
 	}
 
 	// Controls help (bottom)
-	help := "LMB: aim  RMB: select  [/]: size  P: pause  +/-: speed  Scroll: zoom  Del: remove  Space: pin  F: friction  M: merge  G: field"
-	ebitenutil.DebugPrintAt(r.hudImage, help, 8, int(hudH)-20)
+	help1 := "[LMB] Aim  [RMB] Select  [[] []] Size  [P] Pause  [+] [-] Speed  [Scroll] Zoom  [Home] Reset cam"
+	help2 := "[Del] Remove  [Space] Pin  [F] Friction  [M] Merge  [G] Field  [O] Orbit Challenge"
+	ebitenutil.DebugPrintAt(r.hudImage, help1, 8, int(hudH)-36)
+	ebitenutil.DebugPrintAt(r.hudImage, help2, 8, int(hudH)-20)
 
 	// Draw HUD scaled up onto the main screen
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(hudScale, hudScale)
+	screen.DrawImage(r.hudImage, op)
+}
+
+// --- Challenge rendering ---
+
+func (r *Renderer) drawOrbitZone(ch *Challenge, cam *Camera) {
+	cx, cy := cam.WorldToScreen(ch.orbitCenter[0], ch.orbitCenter[1])
+	sr := int(float64(int(ch.orbitZoneRadius)) * cam.zoom)
+
+	// Draw dashed circle outline
+	steps := sr * 4
+	if steps < 60 {
+		steps = 60
+	}
+	dashLen := 12
+	for i := 0; i < steps; i++ {
+		if (i/dashLen)%2 != 0 {
+			continue
+		}
+		angle := 2 * math.Pi * float64(i) / float64(steps)
+		px := cx + float64(sr)*math.Cos(angle)
+		py := cy + float64(sr)*math.Sin(angle)
+		ix := int(px)
+		iy := int(py)
+		if ix >= 0 && ix < screenWidth && iy >= 0 && iy < screenHeight {
+			idx := (iy*screenWidth + ix) * 4
+			r.pixels[idx] = 40
+			r.pixels[idx+1] = 60
+			r.pixels[idx+2] = 80
+			r.pixels[idx+3] = 0xFF
+		}
+	}
+}
+
+func (r *Renderer) drawDashedLine(x0, y0, x1, y1 float64, color [3]byte) {
+	dx := x1 - x0
+	dy := y1 - y0
+	length := math.Sqrt(dx*dx + dy*dy)
+	if length < 1 {
+		return
+	}
+
+	steps := int(length)
+	dashLen := 6
+	for s := 0; s <= steps; s++ {
+		if (s/dashLen)%2 != 0 {
+			continue
+		}
+		t := float64(s) / length
+		px := x0 + dx*t
+		py := y0 + dy*t
+		i := int(px)
+		j := int(py)
+		if i >= 0 && i < screenWidth && j >= 0 && j < screenHeight {
+			idx := (j*screenWidth + i) * 4
+			r.pixels[idx] = color[0]
+			r.pixels[idx+1] = color[1]
+			r.pixels[idx+2] = color[2]
+			r.pixels[idx+3] = 0xFF
+		}
+	}
+}
+
+func (r *Renderer) drawChallengeSlingshot(input *InputState, cam *Camera, world *World) {
+	cx, cy := input.cursorWorld(cam)
+	startSX, startSY := cam.WorldToScreen(input.aimStartX, input.aimStartY)
+	endSX, endSY := cam.WorldToScreen(cx, cy)
+
+	// Draw rubber band line
+	r.drawLine(startSX, startSY, endSX, endSY, [3]byte{255, 255, 100})
+
+	// Draw ghost at launch point (fixed radius 5 for challenge)
+	sr := cam.WorldRadius(5)
+	r.drawCircleOutline(startSX, startSY, sr, [3]byte{255, 255, 100})
+
+	// Draw trajectory preview
+	dx := cx - input.aimStartX
+	dy := cy - input.aimStartY
+	launchScale := 0.05
+	vx := -dx * launchScale
+	vy := -dy * launchScale
+	r.drawTrajectory(input.aimStartX, input.aimStartY, vx, vy, 5, world, cam)
+}
+
+func (r *Renderer) drawChallengeHUD(screen *ebiten.Image, ch *Challenge, input *InputState) {
+	hudW := screenWidth / hudScale
+	hudH := screenHeight / hudScale
+	if r.hudImage == nil {
+		r.hudImage = ebiten.NewImage(int(hudW), int(hudH))
+	}
+	r.hudImage.Clear()
+
+	level := ch.CurrentLevel()
+	best := ch.bestScores[ch.currentLevel]
+
+	// Top-left: level info
+	title := fmt.Sprintf("ORBIT CHALLENGE - Level %d: %s", ch.currentLevel+1, level.Name)
+	ebitenutil.DebugPrintAt(r.hudImage, title, 8, 8)
+
+	// Orbit count and best score
+	scoreStr := fmt.Sprintf("Orbits: %d  (Best: %d)", ch.orbitCount, best)
+	ebitenutil.DebugPrintAt(r.hudImage, scoreStr, 8, 24)
+
+	// Speed info
+	speedStr := fmt.Sprintf("Speed: %.1fx", input.simSpeed)
+	pauseStr := ""
+	if input.paused {
+		pauseStr = "  [PAUSED]"
+	}
+	ebitenutil.DebugPrintAt(r.hudImage, speedStr+pauseStr, 8, 40)
+
+	// Center message for crash/escape
+	if ch.state == ChallengeCrashed || ch.state == ChallengeEscaped {
+		var msg string
+		if ch.state == ChallengeCrashed {
+			msg = fmt.Sprintf("CRASHED!  %d orbits", ch.orbitCount)
+		} else {
+			msg = fmt.Sprintf("ESCAPED!  %d orbits", ch.orbitCount)
+		}
+		if ch.newBest {
+			msg += "  ** NEW BEST! **"
+		}
+		centerX := int(hudW)/2 - len(msg)*3
+		centerY := int(hudH) / 2
+		ebitenutil.DebugPrintAt(r.hudImage, msg, centerX, centerY)
+
+		retry := "Click to retry"
+		ebitenutil.DebugPrintAt(r.hudImage, retry, int(hudW)/2-len(retry)*3, centerY+20)
+	}
+
+	// Bottom help
+	help := "[LMB] Launch  [Left] [Right] Change level  [P] Pause  [+] [-] Speed  [Scroll] Zoom  [O] [Esc] Exit"
+	ebitenutil.DebugPrintAt(r.hudImage, help, 8, int(hudH)-20)
+
+	// Scale and draw
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(hudScale, hudScale)
 	screen.DrawImage(r.hudImage, op)
